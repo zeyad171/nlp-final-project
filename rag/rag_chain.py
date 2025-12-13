@@ -154,17 +154,28 @@ class GameRAGChain:
         logger.info(f"Built and saved index with {len(self._chunks)} chunks")
     
     def _load_and_chunk_docs(self) -> List[Dict[str, Any]]:
-        """Load documents and split into chunks."""
+        """Load the game rules document and split into chunks."""
         chunks = []
         
-        # Find all markdown files
-        for doc_path in self.docs_dir.glob("**/*.md"):
+        # Load only the dedicated RAG knowledge file
+        doc_path = self.docs_dir / self.config.RAG_KNOWLEDGE_FILE
+        
+        if doc_path.exists():
             with open(doc_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
             # Split by sections (better than fixed size for game docs)
             doc_chunks = self._smart_chunk(content, doc_path.name)
             chunks.extend(doc_chunks)
+            logger.info(f"Loaded RAG knowledge from: {doc_path.name}")
+        else:
+            # Fallback: load all markdown files if specific file not found
+            logger.warning(f"RAG knowledge file not found: {doc_path}, falling back to all .md files")
+            for doc_path in self.docs_dir.glob("**/*.md"):
+                with open(doc_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                doc_chunks = self._smart_chunk(content, doc_path.name)
+                chunks.extend(doc_chunks)
         
         logger.info(f"Created {len(chunks)} chunks from documents")
         return chunks

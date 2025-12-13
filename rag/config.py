@@ -17,6 +17,7 @@ class RAGConfig:
     
     # Document paths
     DOCS_DIR: str = "docs/"
+    RAG_KNOWLEDGE_FILE: str = "game_rules_rag.md"  # Only use this file for RAG
     SUPPORTED_EXTENSIONS: tuple = (".md", ".txt")
     
     # Chunking settings (improved)
