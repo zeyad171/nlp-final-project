@@ -192,31 +192,50 @@ def load_model(model, optimizer, path=MODEL_SAVE_PATH):
     return False
 
 
-def create_agent(num_actions=9):
+def create_agent(num_actions=9, input_size=25):
     """
     Factory function to create and initialize the LSTM agent.
     Automatically loads saved weights if available.
+    
+    Args:
+        num_actions: Number of output actions (default 9)
+        input_size: Size of state vector (default 25)
     
     Returns:
         tuple: (model, optimizer, criterion, state_buffer)
     """
     model = LSTMActionAgent(
-        input_size=12,
+        input_size=input_size,  # Updated: 25 features (room + intent + game state)
         hidden_size=64,
         num_layers=2,
         num_actions=num_actions,
-        dropout=0.2
+        dropout=0.3  # Slightly higher dropout to prevent overfitting
     )
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    # Lower learning rate to prevent divergence
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005, weight_decay=1e-5)
     criterion = nn.CrossEntropyLoss()
     state_buffer = StateHistoryBuffer(max_length=10)
     
-    # Try to load existing weights
-    loaded = load_model(model, optimizer)
+    # Try to load existing weights (skip if input size changed)
+    loaded = False
+    if os.path.exists(MODEL_SAVE_PATH):
+        try:
+            checkpoint = torch.load(MODEL_SAVE_PATH, weights_only=True)
+            # Check if model architecture matches
+            saved_input_size = checkpoint['model_state_dict']['input_embedding.weight'].shape[1]
+            if saved_input_size == input_size:
+                model.load_state_dict(checkpoint['model_state_dict'])
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                loaded = True
+                print(f"Model loaded from {MODEL_SAVE_PATH}")
+            else:
+                print(f"Model architecture changed ({saved_input_size} -> {input_size}), starting fresh")
+        except Exception as e:
+            print(f"Could not load model: {e}")
     
     param_count = sum(p.numel() for p in model.parameters())
     status = "loaded from disk" if loaded else "initialized fresh"
-    print(f"LSTM Agent ({status}): {param_count:,} parameters")
+    print(f"LSTM Agent ({status}): {param_count:,} parameters, input_size={input_size}")
     
     return model, optimizer, criterion, state_buffer
