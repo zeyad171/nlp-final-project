@@ -363,6 +363,77 @@ function navigate(direction) {
     }
     
     render();
+    
+    // Train agent on navigation (action index 5 = navigate)
+    trainNavigationAction(direction);
+}
+
+// Train the agent on navigation actions
+async function trainNavigationAction(direction) {
+    const actionId = `go_${direction}`;
+    const actionIndex = 5;  // Navigate action index
+    
+    // Record move in game history for batch training
+    const currentState = {
+        step: gameState.visitedRooms.length,
+        inventory: [...gameState.inventory],
+        currentRoom: gameState.currentRoom,
+        puzzlesSolved: [...gameState.puzzlesSolved],
+        doorLocked: !gameState.puzzlesSolved.includes('final_ritual')
+    };
+    
+    gameState.gameHistory.push({
+        state: currentState,
+        intent: gameState.lastIntent || 'navigate',
+        actionIndex: actionIndex,
+        actionId: actionId
+    });
+    
+    // Update action distribution
+    if (gameState.training.actionDistribution) {
+        gameState.training.actionDistribution[actionIndex]++;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/agent/train`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                state: {
+                    step: gameState.visitedRooms.length,
+                    inventory: gameState.inventory,
+                    currentRoom: gameState.currentRoom,
+                    puzzlesSolved: gameState.puzzlesSolved,
+                    doorLocked: !gameState.puzzlesSolved.includes('final_ritual')
+                },
+                intent: 'navigate',
+                correct_action_id: actionIndex
+            })
+        });
+        
+        const data = await response.json();
+        if (data.status === 'trained') {
+            gameState.training.totalCount++;
+            gameState.training.lossHistory.push(data.loss);
+            gameState.training.samples.push({
+                intent: 'navigate',
+                action: `Go ${direction}`,
+                loss: data.loss
+            });
+            
+            // Keep only last 100 samples for display
+            if (gameState.training.samples.length > 100) {
+                gameState.training.samples.shift();
+            }
+            if (gameState.training.lossHistory.length > 100) {
+                gameState.training.lossHistory.shift();
+            }
+            
+            updateTrainingDisplay();
+        }
+    } catch (error) {
+        console.error('Navigation training error:', error);
+    }
 }
 
 // Navigation button handlers
@@ -829,14 +900,14 @@ function mapAgentAction(agentActionId, availableActions) {
     // Maps general action categories to patterns that match specific actions
     const categoryPatterns = {
         'look': ['look'],
-        'read_books': ['read_', 'examine_', 'study_'],
+        'read_books': ['read_', 'examine_inscriptions', 'study_'],
         'take_key': ['take_key', 'take_skeleton', 'take_golden', 'take_dragon'],
         'use_keys': ['use_key', 'pull_lever', 'unlock_'],
         'open_exit': ['open_exit', 'exit', 'escape'],
-        'navigate': ['go_', 'enter_', 'move_'],
-        'take_item': ['take_'],  // Matches take_torch, take_dagger, etc.
-        'solve_puzzle': ['solve_', 'light_', 'perform_', 'open_safe', 'examine_mirror'],
-        'interact': ['pray', 'examine_', 'search_', 'open_']
+        'navigate': ['go_north', 'go_south', 'go_east', 'go_west'],
+        'take_item': ['take_torch', 'take_candle', 'take_dagger', 'take_scroll', 'take_cross', 'take_holy', 'take_map', 'take_tome'],
+        'solve_puzzle': ['solve_', 'light_candles', 'perform_ritual', 'open_safe', 'examine_mirror'],
+        'interact': ['pray', 'examine_altar', 'examine_portrait', 'search_', 'open_coffin', 'open_trapdoor']
     };
     
     const patterns = categoryPatterns[agentActionId];
@@ -1017,15 +1088,23 @@ function updateTrainingDisplay() {
         elements.gamesCompleted.textContent = gameState.gamesCompleted;
     }
     
-    // Calculate average loss
+    // Calculate average loss from recent history (last 50 losses)
+    let avgLoss = 0;
     if (training.lossHistory.length > 0) {
-        const avgLoss = training.lossHistory.reduce((a, b) => a + b, 0) / training.lossHistory.length;
+        const recentLosses = training.lossHistory.slice(-50);
+        avgLoss = recentLosses.reduce((a, b) => a + b, 0) / recentLosses.length;
         elements.avgLoss.textContent = avgLoss.toFixed(3);
     }
     
-    // Calculate accuracy based on actual prediction correctness
+    // Calculate accuracy based on loss (lower loss = higher accuracy estimate)
+    // Map loss to accuracy: loss < 0.5 = ~90%, loss ~1.0 = ~60%, loss ~2.0 = ~30%, loss > 2.5 = ~10%
     let accuracyPercent = 0;
-    if (training.totalPredictions > 0) {
+    if (training.lossHistory.length > 10) {
+        // Sigmoid-like mapping: accuracy = 100 * (1 / (1 + loss))
+        accuracyPercent = Math.min(95, Math.max(5, 100 / (1 + avgLoss)));
+        elements.accuracy.textContent = `~${accuracyPercent.toFixed(0)}%`;
+    } else if (training.totalPredictions > 0 && training.correctPredictions > 0) {
+        // Fallback to click-based accuracy if available
         accuracyPercent = (training.correctPredictions / training.totalPredictions) * 100;
         elements.accuracy.textContent = `${accuracyPercent.toFixed(0)}%`;
     } else {
@@ -1067,21 +1146,31 @@ function updateModelHealth(samples, accuracy, games) {
     
     let icon, text, className;
     
-    if (games === 0 && samples < 20) {
+    // Get recent average loss for better status
+    const recentLosses = gameState.training.lossHistory.slice(-50);
+    const avgLoss = recentLosses.length > 0 
+        ? recentLosses.reduce((a, b) => a + b, 0) / recentLosses.length 
+        : 999;
+    
+    if (samples < 20) {
         icon = '🔴';
-        text = `Untrained - Play ${3 - games} more games to train`;
+        text = `Untrained - Play games to collect data`;
         className = 'model-health untrained';
-    } else if (games < 3 || accuracy < 30) {
+    } else if (avgLoss > 2.0 || games < 2) {
         icon = '🟡';
-        text = `Learning - ${games} games, ${accuracy.toFixed(0)}% accuracy`;
+        text = `Learning - ${games} games, loss: ${avgLoss.toFixed(2)}`;
         className = 'model-health learning';
-    } else if (accuracy < 60) {
+    } else if (avgLoss > 1.5) {
         icon = '🟡';
-        text = `Needs more training - ${accuracy.toFixed(0)}% accuracy`;
+        text = `Improving - loss: ${avgLoss.toFixed(2)}, ~${accuracy.toFixed(0)}% acc`;
         className = 'model-health learning';
+    } else if (avgLoss > 1.0) {
+        icon = '🟢';
+        text = `Good - loss: ${avgLoss.toFixed(2)}, ~${accuracy.toFixed(0)}% acc`;
+        className = 'model-health trained';
     } else {
         icon = '🟢';
-        text = `Well trained! ${accuracy.toFixed(0)}% accuracy`;
+        text = `Excellent! loss: ${avgLoss.toFixed(2)}, ~${accuracy.toFixed(0)}% acc`;
         className = 'model-health trained';
     }
     
