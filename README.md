@@ -298,8 +298,4 @@ Reset agent's state buffer (call on new game).
 
 ---
 
-## License
-
-Built for NLP Final Project 🎓
-
 *May your dice rolls be ever in your favor!* 🎲
