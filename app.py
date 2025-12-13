@@ -26,8 +26,7 @@ from flask_cors import CORS
 # Import our modules
 from lstm_agent import create_agent, save_model
 from rag.rag_system import get_rag_system
-from game_utils import ACTION_MAP, vectorize_state, STATE_SIZE
-import random
+from game_utils import ACTION_MAP, vectorize_state
 
 
 # ==============================================
@@ -46,11 +45,8 @@ print("\n" + "=" * 50)
 print("  Initializing D&D Adventure Backend")
 print("=" * 50)
 
-# Initialize LSTM Agent with correct input size
-model, optimizer, criterion, state_buffer = create_agent(
-    num_actions=len(ACTION_MAP),
-    input_size=STATE_SIZE  # 25 features
-)
+# Initialize LSTM Agent
+model, optimizer, criterion, state_buffer = create_agent(num_actions=len(ACTION_MAP))
 
 # Initialize RAG System (lazy loading on first request)
 rag_system = None
@@ -268,29 +264,25 @@ def agent_batch_train():
         
         model.train()
         
-        # Create sliding window sequences for better LSTM training
-        sequence_length = 5  # Use last 5 states to predict action
-        sequences = []
-        for i in range(len(training_data)):
-            # Get states from max(0, i-seq_len+1) to i+1
-            start_idx = max(0, i - sequence_length + 1)
-            seq_states = [training_data[j]['state'] for j in range(start_idx, i + 1)]
-            target_action = training_data[i]['action']
-            sequences.append({
-                'states': torch.stack(seq_states, dim=0),  # (seq_len, features)
-                'action': target_action
-            })
-        
         for epoch in range(epochs):
             epoch_loss = 0.0
             
-            # Shuffle sequences each epoch (critical for learning!)
-            random.shuffle(sequences)
+            # Clear buffer for each epoch
+            state_buffer.clear()
             model.reset_hidden()
             
-            for seq in sequences:
-                state_sequence = seq['states'].unsqueeze(0)  # (1, seq_len, features)
-                target = torch.LongTensor([seq['action']])
+            for item in training_data:
+                state_buffer.add(item['state'])
+                
+                # Need at least 2 states for meaningful sequence
+                if len(state_buffer) < 2:
+                    continue
+                
+                state_sequence = state_buffer.get_sequence()
+                if state_sequence is None:
+                    continue
+                
+                target = torch.LongTensor([item['action']])
                 
                 optimizer.zero_grad()
                 logits, _ = model(state_sequence)
@@ -303,12 +295,11 @@ def agent_batch_train():
                 epoch_loss += loss.item()
                 samples_trained += 1
             
-            avg_epoch_loss = epoch_loss / max(1, len(sequences))
-            total_loss += avg_epoch_loss
-            print(f"  Epoch {epoch + 1}/{epochs}: loss = {avg_epoch_loss:.4f}")
+            total_loss += epoch_loss
+            print(f"  Epoch {epoch + 1}/{epochs}: loss = {epoch_loss / max(1, len(training_data)):.4f}")
         
-        final_loss = total_loss / max(1, epochs)
-        print(f"Batch training complete! Final avg loss: {final_loss:.4f}, trained on {samples_trained} sequences")
+        final_loss = total_loss / max(1, samples_trained)
+        print(f"Batch training complete! Final avg loss: {final_loss:.4f}")
         
         # Save model after batch training
         save_model(model, optimizer)
