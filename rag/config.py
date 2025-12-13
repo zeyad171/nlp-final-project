@@ -40,7 +40,7 @@ class RAGConfig:
     # LLM settings
     LLM_TYPE: str = "gemini"  # "gemini", "ollama", "local"
     GEMINI_API_KEY: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
     
     # Ollama settings (alternative)
     OLLAMA_MODEL: str = "llama3.2:3b"
