@@ -9,6 +9,7 @@ const API_URL = "http://127.0.0.1:5000";
 // ============================================
 const gameState = {
     currentRoom: 'hall',
+    previousRoom: null,  // Track last room to avoid immediate backtracking
     visitedRooms: ['hall'],
     inventory: [],
     puzzlesSolved: [],
@@ -341,6 +342,7 @@ function navigate(direction) {
     
     // Move to new room
     const oldRoom = gameState.currentRoom;
+    gameState.previousRoom = oldRoom;  // Track for anti-loop navigation
     gameState.currentRoom = targetRoom;
     gameState.moveCount++;
     
@@ -937,11 +939,17 @@ function mapAgentAction(agentActionId, availableActions) {
         'take_key': ['take_key', 'take_skeleton', 'take_golden', 'take_dragon'],
         'use_keys': ['use_key', 'pull_lever', 'unlock_'],
         'open_exit': ['open_exit', 'exit', 'escape'],
-        'navigate': ['go_north', 'go_south', 'go_east', 'go_west'],
+        'navigate': [], // Handled specially below
         'take_item': ['take_torch', 'take_candle', 'take_dagger', 'take_scroll', 'take_cross', 'take_holy', 'take_map', 'take_tome'],
         'solve_puzzle': ['solve_', 'light_candles', 'perform_ritual', 'open_safe', 'examine_mirror'],
         'interact': ['pray', 'examine_altar', 'examine_portrait', 'search_', 'open_coffin', 'open_trapdoor']
     };
+    
+    // Special handling for navigation - use smart direction selection
+    if (agentActionId === 'navigate') {
+        const navAction = selectSmartNavigation(availableActions);
+        if (navAction) return navAction;
+    }
     
     const patterns = categoryPatterns[agentActionId];
     if (patterns) {
@@ -964,6 +972,77 @@ function mapAgentAction(agentActionId, availableActions) {
     
     // Last resort: return first available action
     return availableActions[0] || 'look';
+}
+
+// Smart navigation selection - prefers unvisited rooms, avoids loops
+function selectSmartNavigation(availableActions) {
+    const directions = ['go_north', 'go_south', 'go_east', 'go_west'];
+    const validDirections = directions.filter(d => availableActions.includes(d));
+    
+    if (validDirections.length === 0) return null;
+    
+    const currentRoom = GAME_CONFIG.rooms[gameState.currentRoom];
+    if (!currentRoom) return validDirections[0];
+    
+    // Map directions to target rooms
+    const directionMap = {
+        'go_north': 'north',
+        'go_south': 'south', 
+        'go_east': 'east',
+        'go_west': 'west'
+    };
+    
+    // Score each direction
+    const scored = validDirections.map(dir => {
+        const connKey = directionMap[dir];
+        const conn = currentRoom.connections[connKey];
+        if (!conn) return { dir, score: -100, target: null };
+        
+        const targetRoom = typeof conn === 'string' ? conn : conn.room;
+        
+        let score = 0;
+        
+        // HEAVILY penalize going back to the room we just came from (prevent bounce)
+        if (targetRoom === gameState.previousRoom) {
+            score -= 200;
+        }
+        
+        // Strongly prefer unvisited rooms
+        if (!gameState.visitedRooms.includes(targetRoom)) {
+            score += 100;
+        }
+        
+        // Check if target room has uncollected items
+        const targetRoomData = GAME_CONFIG.rooms[targetRoom];
+        if (targetRoomData && targetRoomData.items) {
+            const hasUncollectedItems = targetRoomData.items.some(
+                item => !gameState.takenItems.includes(item)
+            );
+            if (hasUncollectedItems) {
+                score += 50;
+            }
+        }
+        
+        // Penalize recently visited rooms (avoid loops)
+        const recentRooms = gameState.visitedRooms.slice(-5);
+        const recentIndex = recentRooms.lastIndexOf(targetRoom);
+        if (recentIndex >= 0) {
+            // More recent = more penalty
+            score -= (5 - recentIndex) * 10;
+        }
+        
+        // Small random factor to break ties
+        score += Math.random() * 5;
+        
+        return { dir, score, target: targetRoom };
+    });
+    
+    // Sort by score (highest first) and pick the best
+    scored.sort((a, b) => b.score - a.score);
+    
+    console.log('[NAV SCORES]', scored.map(s => `${s.dir}→${s.target || '?'}: ${s.score.toFixed(0)}`).join(', '));
+    
+    return scored[0].dir;
 }
 
 // ============================================
@@ -1370,6 +1449,7 @@ function restartGame() {
     
     Object.assign(gameState, {
         currentRoom: 'hall',
+        previousRoom: null,  // Reset for new game
         visitedRooms: ['hall'],
         inventory: [],
         puzzlesSolved: [],
