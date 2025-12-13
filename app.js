@@ -834,9 +834,24 @@ elements.agentAct.addEventListener('click', async () => {
     elements.agentStatus.classList.add('thinking');
     
     try {
-        // Get available actions
+        // Get available actions including navigation
         const room = GAME_CONFIG.rooms[gameState.currentRoom];
         const availableActions = getAvailableActions(room);
+        
+        // Add available navigation directions
+        const directions = ['north', 'south', 'east', 'west'];
+        directions.forEach(dir => {
+            const connection = room.connections[dir];
+            if (connection) {
+                // Check if unlocked or can be unlocked
+                const isLocked = typeof connection === 'object' && connection.locked && 
+                    !gameState.unlockedDoors.includes(`${room.id}-${connection.room}`);
+                if (!isLocked || checkRequirements(connection.requires)) {
+                    availableActions.push(`go_${dir}`);
+                }
+            }
+        });
+        
         const actionMask = GAME_CONFIG.intents.map(() => 1); // Simplified mask
         
         const response = await fetch(`${API_URL}/agent/act`, {
@@ -846,6 +861,8 @@ elements.agentAct.addEventListener('click', async () => {
                 state: {
                     step: gameState.visitedRooms.length,
                     inventory: gameState.inventory,
+                    currentRoom: gameState.currentRoom,
+                    puzzlesSolved: gameState.puzzlesSolved,
                     doorLocked: !gameState.puzzlesSolved.includes('final_ritual')
                 },
                 intent: gameState.lastIntent,
@@ -870,17 +887,33 @@ elements.agentAct.addEventListener('click', async () => {
         // Track prediction
         gameState.training.totalPredictions++;
         
-        // Highlight the action button
-        const actionBtn = document.querySelector(`[data-action="${agentAction}"]`);
-        if (actionBtn) {
-            actionBtn.classList.add('highlight');
-            setTimeout(() => {
-                actionBtn.classList.remove('highlight');
-                executeAction(agentAction);
-            }, 1000);
+        // Check if it's a navigation action
+        if (agentAction.startsWith('go_')) {
+            const direction = agentAction.replace('go_', '');
+            const navBtn = elements[`nav${direction.charAt(0).toUpperCase() + direction.slice(1)}`];
+            if (navBtn && !navBtn.disabled) {
+                navBtn.classList.add('highlight');
+                addLog(`Agent suggests: Move ${direction}`, 'success');
+                setTimeout(() => {
+                    navBtn.classList.remove('highlight');
+                    navigate(direction);
+                }, 1000);
+            } else {
+                addLog(`Agent suggests moving ${direction}, but path is blocked`, 'warning');
+            }
         } else {
-            // If action not found, try navigation or default
-            addLog(`Agent suggests: ${data.action_id}`);
+            // Highlight the action button
+            const actionBtn = document.querySelector(`[data-action="${agentAction}"]`);
+            if (actionBtn) {
+                actionBtn.classList.add('highlight');
+                setTimeout(() => {
+                    actionBtn.classList.remove('highlight');
+                    executeAction(agentAction);
+                }, 1000);
+            } else {
+                // If action not found, log the suggestion
+                addLog(`Agent suggests: ${data.action_id}`);
+            }
         }
         
     } catch (error) {
