@@ -27,46 +27,57 @@ This game features two AI systems working together:
 #### 1. RAG-Based Dungeon Master (Chatbot)
 - **Technology**: Retrieval-Augmented Generation (RAG)
 - **Embedding Model**: SentenceTransformer (all-MiniLM-L6-v2)
-- **Vector Store**: FAISS with persistent indexing
-- **LLM**: Google Gemini 2.5 Flash API
+- **Vector Store**: FAISS with persistent indexing (saved to `vector_db/`)
+- **LLM**: Google Gemini 2.5 Flash Lite
 - **Features**:
   - Smart document chunking (section-aware)
   - Semantic similarity search
   - Context-aware responses based on game state
+  - Comprehensive item knowledge database
   - Fallback logic for offline operation
 
 #### 2. LSTM Action Agent
 - **Architecture**: Long Short-Term Memory (LSTM) Neural Network
-- **Input**: 12 features (progress, inventory state, intent encoding)
-- **Hidden Layers**: 64 units, 2 LSTM layers with dropout
+- **Input**: 25 features:
+  - Room encoding (10 one-hot)
+  - Intent encoding (9 one-hot)
+  - Progress, inventory count, has_torch, has_key, has_dagger, door_locked (6 features)
+- **Hidden Layers**: 64 units, 2 LSTM layers with 30% dropout
 - **Output**: 9 action categories
-- **Training**: Online learning + batch training on game history
+- **Training**: 
+  - Online learning (every action)
+  - Batch training on game history
+  - Model persistence to `model_weights.pth`
 - **Features**:
   - State history buffer (remembers last 10 states)
-  - Gradient clipping for stable training
+  - Gradient clipping (max_norm=1.0)
   - Action masking for valid moves
+  - Can navigate between rooms autonomously
+  - Lower learning rate (0.0005) for stable training
 
 ### Project Structure
 
 ```
 final project/
 ├── app.py              # Flask API server (main entry point)
-├── lstm_agent.py       # LSTM neural network model
-├── game_utils.py       # Game constants & state vectorization
+├── lstm_agent.py       # LSTM neural network model + persistence
+├── game_utils.py       # Game constants & 25-feature state vectorization
 ├── rag/                # RAG system package
 │   ├── __init__.py
-│   ├── config.py       # RAG configuration
+│   ├── config.py       # RAG configuration (API keys, models)
 │   ├── llm_handler.py  # Gemini/Ollama integration
-│   ├── rag_chain.py    # Main RAG pipeline
+│   ├── rag_chain.py    # Main RAG pipeline with item knowledge
 │   └── rag_system.py   # Simple wrapper interface
 ├── docs/
-│   └── game_documentation.md
-├── Frontend/
-│   ├── index.html
-│   ├── app.js
-│   ├── game_config.js
-│   ├── maze_renderer.js
-│   └── style.css
+│   ├── game_documentation.md  # This file (RAG knowledge base)
+│   └── TRAINING_GUIDE.md      # Detailed training instructions
+├── index.html          # Game interface
+├── app.js              # Frontend logic + agent integration
+├── game_config.js      # Rooms, items, puzzles, actions
+├── maze_renderer.js    # SVG map visualization
+├── style.css           # Dark gothic styling
+├── model_weights.pth   # Saved LSTM weights (generated)
+├── vector_db/          # FAISS index cache (generated)
 └── requirements.txt
 ```
 
@@ -233,60 +244,51 @@ Some items are **consumed** (removed from inventory) when used:
 
 ---
 
-## D&D Ability Checks (Flavor)
-
-- **Perception (WIS)**: Looking around, spotting hidden items
-- **Investigation (INT)**: Examining puzzles, reading tomes
-- **Dexterity (DEX)**: Grabbing items, using Thieves' Tools
-- **Arcana (INT)**: Understanding magical runes and rituals
-
----
-
-## AI Dungeon Master Intents
-
-The AI understands these player intents:
-- **inspect** - Roll for Perception/Investigation (look, examine)
-- **navigate** - Move between chambers
-- **get_item** - Pick up magical items
-- **use_item** - Use an item from inventory
-- **unlock** - Open locked doors with keys
-- **read** - Study books, scrolls, inscriptions
-- **solve_puzzle** - Attempt puzzle solutions
-- **interact** - General interaction (pray, etc.)
-- **escape** - Complete the quest!
-
----
-
 ## Game Controls
 
-- **Arrow Keys / WASD**: Navigate between chambers
-- **L**: Look around (Roll for Perception!)
-- **E**: Export game log to clipboard
-- **Click action buttons**: Perform specific actions
-- **Enter in chat**: Consult the Dungeon Master
+| Key | Action |
+|-----|--------|
+| Arrow Keys / WASD | Navigate between chambers |
+| L | Look around (Roll for Perception!) |
+| E | Export game log to clipboard |
+| Click action buttons | Perform specific actions |
+| Enter in chat | Consult the Dungeon Master |
 
 ---
 
-## LSTM Agent Training Guide
+## LSTM Agent Action Categories
 
-### How to Train the Agent
-1. **Play 3-5 complete games** - Each playthrough generates training data
-2. **Click "Train on History"** - Batch trains on all recorded moves
-3. **Enable Auto-Train** - Automatically trains after each game
+The agent predicts one of 9 action types:
 
-### Training Metrics
-| Indicator | Meaning |
-|-----------|---------|
-| 🔴 Untrained | Play more games |
-| 🟡 Learning | Training in progress, accuracy < 60% |
-| 🟢 Trained | Good training, accuracy ≥ 60% |
-| Accuracy > 80% | Excellent - model learned well! |
+| Index | Action | Description |
+|-------|--------|-------------|
+| 0 | look | Look around the room |
+| 1 | read_books | Read books, scrolls, inscriptions |
+| 2 | take_key | Take key items |
+| 3 | use_keys | Use keys, pull levers |
+| 4 | open_exit | Open exit, escape |
+| 5 | navigate | Move between rooms (N/S/E/W) |
+| 6 | take_item | Take general items |
+| 7 | solve_puzzle | Solve puzzles |
+| 8 | interact | General interaction |
+
+---
+
+## Training Metrics Explained
+
+### Loss (Lower = Better)
+| Value | Status |
+|-------|--------|
+| > 2.0 | Untrained |
+| 1.5-2.0 | Learning |
+| 1.0-1.5 | Good |
+| < 1.0 | Excellent |
 
 ### Model Health Indicators
-- **Samples**: Total training examples
-- **Avg Loss**: Lower is better (target < 1.5)
-- **Accuracy**: Prediction correctness percentage
-- **Games**: Complete games played
+- 🔴 **Untrained**: < 20 samples
+- 🟡 **Learning**: Loss > 1.5 or < 3 games
+- 🟢 **Good**: Loss 1.0-1.5
+- 🟢 **Excellent**: Loss < 1.0
 
 ---
 
@@ -317,8 +319,26 @@ Response: {message, intent}
 
 ### Agent Actions
 ```
-POST /agent/act       - Get action prediction
+POST /agent/act       - Get action prediction (includes navigation)
 POST /agent/train     - Train on single action
-POST /agent/batch_train - Train on game history
-POST /agent/reset     - Reset agent state
+POST /agent/batch_train - Train on game history (saves model)
+POST /agent/reset     - Reset agent state buffer
 ```
+
+---
+
+## Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| GEMINI_API_KEY | Google Gemini API key for RAG chatbot |
+
+---
+
+## Files Generated at Runtime
+
+| File | Purpose |
+|------|---------|
+| `model_weights.pth` | Trained LSTM weights (persists between sessions) |
+| `vector_db/index.faiss` | FAISS vector index |
+| `vector_db/chunks.json` | Document chunks for retrieval |
