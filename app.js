@@ -1028,8 +1028,8 @@ function updateTrainingDisplay() {
         elements.learningStatus.className = 'progress-status trained';
     }
     
-    // Update history
-    if (training.samples.length > 0) {
+    // Update history (if element exists)
+    if (elements.trainingHistory && training.samples.length > 0) {
         elements.trainingHistory.innerHTML = training.samples.slice(-5).reverse().map(s => `
             <div class="history-item">
                 <span>${s.intent} → ${s.action}</span>
@@ -1105,11 +1105,14 @@ async function batchTrainOnHistory(epochs = 3) {
     }
     
     addLog(`[BATCH TRAIN] Starting batch training on ${gameState.gameHistory.length} moves (${epochs} epochs)...`, 'important');
-    elements.batchTrainBtn.disabled = true;
     
     // Store original content and show training state
-    const originalBtnHTML = elements.batchTrainBtn.innerHTML;
-    elements.batchTrainBtn.innerHTML = '<span class="btn-icon">⏳</span> Training...';
+    let originalBtnHTML = '';
+    if (elements.batchTrainBtn) {
+        elements.batchTrainBtn.disabled = true;
+        originalBtnHTML = elements.batchTrainBtn.innerHTML;
+        elements.batchTrainBtn.innerHTML = '<span class="btn-icon">⏳</span> Training...';
+    }
     
     try {
         const response = await fetch(`${API_URL}/agent/batch_train`, {
@@ -1140,9 +1143,11 @@ async function batchTrainOnHistory(epochs = 3) {
         console.error('Batch training error:', error);
     }
     
-    elements.batchTrainBtn.disabled = false;
-    // Restore button with updated count
-    elements.batchTrainBtn.innerHTML = `<span class="btn-icon">🧠</span> Train on History (<span id="history-count">${gameState.gameHistory.length}</span> moves)`;
+    if (elements.batchTrainBtn) {
+        elements.batchTrainBtn.disabled = false;
+        // Restore button with updated count
+        elements.batchTrainBtn.innerHTML = `<span class="btn-icon">🧠</span> Train on History (<span id="history-count">${gameState.gameHistory.length}</span> moves)`;
+    }
 }
 
 // ============================================

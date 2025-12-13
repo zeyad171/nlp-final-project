@@ -322,15 +322,40 @@ Reply as JSON only: {{"message": "your advice", "intent": "chosen_intent"}}"""
         inventory = game_state.get('inventory', [])
         query_lower = query.lower()
         
+        # Game rules - check this FIRST before room-specific logic
+        if any(w in query_lower for w in ['rule', 'how to play', 'instructions', 'controls', 'help']):
+            return (
+                "Game Rules: Explore 10 chambers, collect items, solve 5 puzzles! "
+                "Use WASD/arrows to move, L to look around, click buttons for actions. "
+                "Get 3 keys to reach the Portal Chamber, then perform the ritual to escape!",
+                "inspect"
+            )
+        
         # Game introduction
         if any(w in query_lower for w in ['what is', 'about', 'game']):
-            return ("Welcome to the Dungeon! Explore rooms, solve puzzles, collect keys, and escape!", "inspect")
+            return (
+                "Welcome to the D&D Adventure! You're trapped in a magical dungeon with 10 chambers. "
+                "Explore, collect items, solve puzzles, and activate the escape portal to win!",
+                "inspect"
+            )
         
         # Keys
         if 'key' in query_lower:
-            return ("You need 3 keys: Thieves' Tools (Library), Dragon Scale Key (Treasure), Lich's Key (Tomb).", "get_item")
+            return ("You need 3 keys: Thieves' Tools (Wizard's Study), Dragon Scale Key (Goblin Prison), Lich's Key (Tomb).", "get_item")
         
-        # Room-specific
+        # What to do next - general advice
+        if any(w in query_lower for w in ['what to do', 'next', 'now what', 'stuck']):
+            room_name = self.ROOM_NAMES.get(current_room, current_room)
+            if not inventory:
+                return (f"Look around the {room_name}! Search for items and clues.", "inspect")
+            elif current_room == 'vault':
+                return ("Take the tome, read it, then perform the ritual to escape!", "get_item")
+            elif current_room == 'dungeon' and len([k for k in inventory if 'key' in str(k).lower()]) >= 3:
+                return ("You have the keys! Pull the lever to open the Portal Chamber!", "solve_puzzle")
+            else:
+                return (f"Explore the {room_name}. Look for puzzles and items to collect.", "inspect")
+        
+        # Room-specific hints (only if nothing else matched)
         if current_room == 'hall' and 'torch' not in str(inventory).lower():
             return ("Take the Everburning Torch to light your way!", "get_item")
         
