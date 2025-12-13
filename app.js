@@ -820,23 +820,45 @@ elements.agentAct.addEventListener('click', async () => {
 });
 
 function mapAgentAction(agentActionId, availableActions) {
-    // Map old action format to new
-    const actionMap = {
-        'inspect-desk': 'look',
-        'read-book': 'read_books',
-        'take-key': 'take_key',
-        'use-key': 'use_keys',
-        'open-door': 'open_exit'
-    };
-    
-    const mappedAction = actionMap[agentActionId] || agentActionId;
-    
-    // If mapped action is available, use it
-    if (availableActions.includes(mappedAction)) {
-        return mappedAction;
+    // Direct match - return immediately
+    if (availableActions.includes(agentActionId)) {
+        return agentActionId;
     }
     
-    // Otherwise return first available action
+    // Category-to-specific action mapping
+    // Maps general action categories to patterns that match specific actions
+    const categoryPatterns = {
+        'look': ['look'],
+        'read_books': ['read_', 'examine_', 'study_'],
+        'take_key': ['take_key', 'take_skeleton', 'take_golden', 'take_dragon'],
+        'use_keys': ['use_key', 'pull_lever', 'unlock_'],
+        'open_exit': ['open_exit', 'exit', 'escape'],
+        'navigate': ['go_', 'enter_', 'move_'],
+        'take_item': ['take_'],  // Matches take_torch, take_dagger, etc.
+        'solve_puzzle': ['solve_', 'light_', 'perform_', 'open_safe', 'examine_mirror'],
+        'interact': ['pray', 'examine_', 'search_', 'open_']
+    };
+    
+    const patterns = categoryPatterns[agentActionId];
+    if (patterns) {
+        for (const pattern of patterns) {
+            const match = availableActions.find(action => action.startsWith(pattern) || action === pattern);
+            if (match) {
+                return match;
+            }
+        }
+    }
+    
+    // Fallback: try to find any action containing the category keyword
+    const keyword = agentActionId.replace('_', '');
+    const partialMatch = availableActions.find(action => 
+        action.includes(keyword) || keyword.includes(action.split('_')[0])
+    );
+    if (partialMatch) {
+        return partialMatch;
+    }
+    
+    // Last resort: return first available action
     return availableActions[0] || 'look';
 }
 
