@@ -22,16 +22,16 @@ final project/
 │   ├── rag_chain.py    # Main RAG pipeline with FAISS
 │   └── rag_system.py   # Simple wrapper interface
 ├── docs/
-│   ├── game_documentation.md  # RAG knowledge base
-│   └── TRAINING_GUIDE.md      # LSTM training instructions
-├── Frontend/
-│   ├── index.html      # Game interface
-│   ├── app.js          # Frontend game logic
-│   ├── game_config.js  # Rooms, items, puzzles
-│   ├── maze_renderer.js # SVG map visualization
-│   └── style.css       # Dark gothic styling
-├── requirements.txt
-└── README.md
+│   ├── game_documentation.md      # RAG knowledge base
+│   ├── TRAINING_GUIDE.md          # LSTM training instructions
+│   └── TECHNICAL_DOCUMENTATION.md # Complete code documentation
+├── index.html          # Game interface
+├── app.js              # Frontend game logic
+├── game_config.js      # Rooms, items, puzzles
+├── maze_renderer.js    # SVG map visualization
+├── style.css           # Dark gothic styling
+├── requirements.txt    # Python dependencies
+└── README.md           # This file
 ```
 
 ---
@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 Or manually:
 ```bash
-pip install flask flask-cors torch sentence-transformers faiss-cpu google-generativeai
+pip install flask flask-cors torch sentence-transformers faiss-cpu google-generativeai numpy
 ```
 
 ### 2. Set API Key
@@ -87,23 +87,26 @@ Open `index.html` in your browser (double-click or use Live Server).
 
 ### 🎮 Game
 - **10 D&D themed chambers** (Tavern, Wizard's Study, Dragon's Hoard, etc.)
-- **10 magical items** to collect (Vorpal Dagger, Holy Symbol, etc.)
+- **11 magical items** to collect (Vorpal Dagger, Holy Symbol, etc.)
 - **5 puzzles** to solve (Arcane Rituals, Dragon Riddles, Mirror Challenges)
 - **Fantasy medieval atmosphere** with animated SVG map
+- **Smart navigation** - agent avoids loops and explores intelligently
 
 ### 🤖 AI Dungeon Master (RAG)
 - **Google Gemini 2.5 Flash Lite** for natural language responses
 - **FAISS vector store** with persistent indexing
-- **SentenceTransformer embeddings** for semantic search
+- **SentenceTransformer embeddings** (all-MiniLM-L6-v2) for semantic search
 - **Context-aware responses** based on current room, inventory, and progress
 - **Comprehensive item knowledge** - knows what every item does
+- **Smart fallback logic** for offline operation
 
 ### 🧠 LSTM Action Agent
-- **25-feature state vector** (room, intent, inventory, progress)
-- **2-layer LSTM** with 64 hidden units
+- **25-feature state vector** (room encoding, intent, inventory, progress)
+- **2-layer LSTM** with 64 hidden units and 30% dropout
 - **9 action categories** (look, navigate, take_item, solve_puzzle, etc.)
 - **Model persistence** - saves to `model_weights.pth`
 - **Batch training** on complete game history
+- **Smart navigation** - prefers unvisited rooms, avoids backtracking
 - **Can navigate between rooms** and complete the game autonomously
 
 ---
@@ -117,7 +120,7 @@ Open `index.html` in your browser (double-click or use Live Server).
 | A / ← | Move West |
 | D / → | Move East |
 | L | Look around |
-| E | Export game log |
+| E | Export game log to clipboard |
 | Enter | Send chat message |
 
 ---
@@ -126,8 +129,9 @@ Open `index.html` in your browser (double-click or use Live Server).
 
 ### Quick Training
 1. **Play 3-5 complete games** (vary your strategy)
-2. **Click "Train on History"** button
+2. **Click "Train on History"** button after each game
 3. **Watch loss decrease** (target: < 1.0)
+4. **Enable Auto-Train** to train automatically after each game
 
 ### Training Metrics
 | Metric | Good Value | Meaning |
@@ -135,11 +139,12 @@ Open `index.html` in your browser (double-click or use Live Server).
 | Loss | < 1.0 | Model is learning patterns |
 | Samples | > 500 | Enough training data |
 | Games | > 5 | Diverse experience |
+| Accuracy | > 60% | Well-trained model |
 
 ### Model Persistence
 - Model saves to `model_weights.pth` after batch training
-- Automatically loads on server restart
-- Delete file to reset: `Remove-Item model_weights.pth`
+- Automatically loads on server restart (checks architecture compatibility)
+- Delete file to reset: `Remove-Item model_weights.pth` (Windows) or `rm model_weights.pth` (Linux/Mac)
 
 See `docs/TRAINING_GUIDE.md` for detailed instructions.
 
@@ -186,10 +191,10 @@ Get agent's action prediction.
 ```
 
 ### POST `/agent/train`
-Train on a single action.
+Train on a single action (online learning).
 
 ### POST `/agent/batch_train`
-Train on entire game history.
+Train on entire game history (more effective).
 
 ```json
 // Request
@@ -215,12 +220,20 @@ Reset agent's state buffer (call on new game).
 
 | Component | Technology |
 |-----------|------------|
-| Frontend | Vanilla HTML/CSS/JS |
-| Backend | Python Flask |
+| Frontend | Vanilla HTML5, CSS3, JavaScript (ES6+) |
+| Backend | Python 3.x, Flask |
 | LLM | Google Gemini 2.5 Flash Lite |
-| Embeddings | SentenceTransformers (all-MiniLM-L6-v2) |
-| Vector Store | FAISS |
-| Neural Network | PyTorch LSTM |
+| Embeddings | SentenceTransformers (all-MiniLM-L6-v2, 384-dim) |
+| Vector Store | FAISS (IndexFlatIP) |
+| Neural Network | PyTorch LSTM (2 layers, 64 hidden, ~14K parameters) |
+
+---
+
+## Documentation
+
+- **[Game Documentation](docs/game_documentation.md)** - Complete game content, rooms, items, puzzles
+- **[Training Guide](docs/TRAINING_GUIDE.md)** - How to train the LSTM agent
+- **[Technical Documentation](docs/TECHNICAL_DOCUMENTATION.md)** - Complete code documentation with architecture details
 
 ---
 
@@ -229,19 +242,32 @@ Reset agent's state buffer (call on new game).
 ### "Connection failed" or "Agent offline"
 - Check if backend is running on port 5000
 - Run `python app.py` and check for errors
+- Verify no firewall is blocking localhost:5000
 
 ### "The spirits are unclear..."
-- Check if GEMINI_API_KEY is set
+- Check if `GEMINI_API_KEY` is set correctly
 - Verify internet connection for API calls
+- Check API key is valid at https://makersuite.google.com/app/apikey
 
 ### Model not learning (loss increasing)
 - Delete `model_weights.pth` to reset
-- Play more diverse games
-- Don't spam the Train button
+- Play more diverse games (don't repeat same path)
+- Don't spam the Train button (wait for batch training)
+- Ensure you have at least 3-5 complete games before training
+
+### Agent stuck in navigation loop
+- This was fixed with smart navigation selection
+- Agent now prefers unvisited rooms and avoids backtracking
+- If still occurs, delete `model_weights.pth` and retrain
 
 ### CORS errors
 - Backend must be running before opening game
 - Try clearing browser cache
+- Ensure Flask-CORS is installed
+
+### Vector DB errors
+- Delete `vector_db/` folder to rebuild index
+- Index rebuilds automatically on next startup
 
 ---
 
@@ -250,7 +276,25 @@ Reset agent's state buffer (call on new game).
 | File | Purpose | Can Delete? |
 |------|---------|-------------|
 | `model_weights.pth` | Trained LSTM weights | Yes (resets training) |
-| `vector_db/` | FAISS index cache | Yes (rebuilds on startup) |
+| `vector_db/index.faiss` | FAISS vector index | Yes (rebuilds on startup) |
+| `vector_db/chunks.json` | Document chunks metadata | Yes (rebuilds on startup) |
+
+---
+
+## Development
+
+### Project Architecture
+- **Modular design**: Backend separated into `app.py`, `lstm_agent.py`, `game_utils.py`
+- **RAG package**: Organized in `rag/` folder with clear separation of concerns
+- **Frontend**: Vanilla JS with clear separation of game logic, config, and rendering
+
+### Key Features Implemented
+- ✅ RAG-based chatbot with FAISS vector search
+- ✅ LSTM agent with state history buffer
+- ✅ Smart navigation (anti-loop, exploration preference)
+- ✅ Model persistence and auto-loading
+- ✅ Batch training on game history
+- ✅ Comprehensive logging and metrics
 
 ---
 
