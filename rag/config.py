@@ -43,9 +43,6 @@ class RAGConfig:
     GEMINI_API_KEY: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     GEMINI_MODEL: str = "gemini-2.5-flash-lite"
     
-    # Ollama settings (alternative)
-    OLLAMA_MODEL: str = "llama3.2:3b"
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
     
     # Response settings
     MAX_RESPONSE_LENGTH: int = 200
