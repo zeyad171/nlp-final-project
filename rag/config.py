@@ -2,6 +2,9 @@
 RAG Configuration
 =================
 All configurable settings for the RAG system.
+
+API keys should be set via environment variables:
+- GEMINI_API_KEY: Your Google Gemini API key
 """
 
 import os
@@ -36,7 +39,7 @@ class RAGConfig:
     
     # LLM settings
     LLM_TYPE: str = "gemini"  # "gemini", "ollama", "local"
-    GEMINI_API_KEY: str = "AIzaSyCUrNlXLvjaO4oTQHmlk4AFXksDe0-of78"
+    GEMINI_API_KEY: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     GEMINI_MODEL: str = "gemini-2.5-flash"
     
     # Ollama settings (alternative)
