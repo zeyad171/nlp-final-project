@@ -316,13 +316,38 @@ Reply as JSON only: {{"message": "your advice", "intent": "chosen_intent"}}"""
         # Fallback
         return self._fallback_response(query, game_state)
     
+    # Item knowledge database
+    ITEM_INFO = {
+        'torch': ("The Everburning Torch provides magical light! Required to access the Temple of Pelor and Hall of Heroes. Take it and use it to unlock dark passages.", "get_item"),
+        'candle': ("The Ritual Candle is used in the Wizard's Study puzzle. Light the candles from shortest to tallest to reveal a hidden compartment with a key!", "use_item"),
+        'dagger': ("The Vorpal Dagger +1 is essential for the Mirror Puzzle in the Hall of Heroes. Hold it at the midnight position before the magical mirror.", "use_item"),
+        'cross': ("The Holy Symbol grants passage between the Tavern and Temple. It also protects against evil.", "use_item"),
+        'holy': ("The Blessed Potion (Holy Water) is required for the final Portal Ritual. Pour it on the arcane symbols to begin the escape sequence.", "use_item"),
+        'water': ("The Blessed Potion (Holy Water) is required for the final Portal Ritual. Pour it on the arcane symbols to begin the escape sequence.", "use_item"),
+        'potion': ("The Blessed Potion (Holy Water) is required for the final Portal Ritual. Pour it on the arcane symbols to begin the escape sequence.", "use_item"),
+        'scroll': ("The Scroll of Teleportation contains the incantation for the final ritual. Read it after pouring holy water on the symbols.", "read"),
+        'tome': ("The Tome of Portal Magic is in the Portal Chamber. Take it, read it to learn the ritual, then perform the ritual to escape!", "get_item"),
+        'map': ("The Dungeon Map reveals all room locations! Find it in the Dragon's Hoard (attic).", "get_item"),
+        'thieves': ("Thieves' Tools unlock the passage to the Treasure Chamber. Found after solving the candle puzzle in Wizard's Study.", "unlock"),
+        'tools': ("Thieves' Tools unlock the passage to the Treasure Chamber. Found after solving the candle puzzle in Wizard's Study.", "unlock"),
+        'dragon': ("The Dragon Scale Key is one of 3 keys needed for the Portal Chamber. Found in the Goblin Prison.", "get_item"),
+        'lich': ("The Lich's Phylactery Key is one of 3 keys needed for the Portal Chamber. Found in the Tomb of the Lich.", "get_item"),
+        'skeleton': ("The Lich's Phylactery Key (Skeleton Key) is one of 3 keys for the Portal Chamber. Take it from the coffin in the Tomb.", "get_item"),
+        'golden': ("The Golden Key is found inside the safe in the Treasure Chamber. Solve the portrait puzzle (3-7-4-1) to open it.", "get_item"),
+    }
+    
     def _fallback_response(self, query: str, game_state: Dict) -> Tuple[str, str]:
         """Context-aware fallback when RAG fails."""
         current_room = game_state.get('currentRoom', 'hall')
         inventory = game_state.get('inventory', [])
         query_lower = query.lower()
         
-        # Game rules - check this FIRST before room-specific logic
+        # ITEM QUESTIONS - Check FIRST before generic patterns
+        for item_key, (response, intent) in self.ITEM_INFO.items():
+            if item_key in query_lower:
+                return (response, intent)
+        
+        # Game rules
         if any(w in query_lower for w in ['rule', 'how to play', 'instructions', 'controls', 'help']):
             return (
                 "Game Rules: Explore 10 chambers, collect items, solve 5 puzzles! "
@@ -331,20 +356,20 @@ Reply as JSON only: {{"message": "your advice", "intent": "chosen_intent"}}"""
                 "inspect"
             )
         
-        # Game introduction
-        if any(w in query_lower for w in ['what is', 'about', 'game']):
+        # Game introduction (only if NOT asking about specific items)
+        if 'what is this game' in query_lower or 'about the game' in query_lower:
             return (
                 "Welcome to the D&D Adventure! You're trapped in a magical dungeon with 10 chambers. "
                 "Explore, collect items, solve puzzles, and activate the escape portal to win!",
                 "inspect"
             )
         
-        # Keys
-        if 'key' in query_lower:
+        # Keys (general)
+        if 'key' in query_lower and 'what' not in query_lower:
             return ("You need 3 keys: Thieves' Tools (Wizard's Study), Dragon Scale Key (Goblin Prison), Lich's Key (Tomb).", "get_item")
         
         # What to do next - general advice
-        if any(w in query_lower for w in ['what to do', 'next', 'now what', 'stuck']):
+        if any(w in query_lower for w in ['what to do', 'next', 'now what', 'stuck', 'where']):
             room_name = self.ROOM_NAMES.get(current_room, current_room)
             if not inventory:
                 return (f"Look around the {room_name}! Search for items and clues.", "inspect")

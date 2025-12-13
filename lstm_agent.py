@@ -9,8 +9,12 @@ Author: NLP Final Project
 ==============================================
 """
 
+import os
 import torch
 import torch.nn as nn
+
+# Path for model persistence
+MODEL_SAVE_PATH = "./model_weights.pth"
 
 
 class LSTMActionAgent(nn.Module):
@@ -165,9 +169,33 @@ class StateHistoryBuffer:
         return len(self.history)
 
 
+def save_model(model, optimizer, path=MODEL_SAVE_PATH):
+    """Save model and optimizer state to disk."""
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }, path)
+    print(f"Model saved to {path}")
+
+
+def load_model(model, optimizer, path=MODEL_SAVE_PATH):
+    """Load model and optimizer state from disk if exists."""
+    if os.path.exists(path):
+        try:
+            checkpoint = torch.load(path, weights_only=True)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            print(f"Model loaded from {path}")
+            return True
+        except Exception as e:
+            print(f"Failed to load model: {e}")
+    return False
+
+
 def create_agent(num_actions=9):
     """
     Factory function to create and initialize the LSTM agent.
+    Automatically loads saved weights if available.
     
     Returns:
         tuple: (model, optimizer, criterion, state_buffer)
@@ -184,7 +212,11 @@ def create_agent(num_actions=9):
     criterion = nn.CrossEntropyLoss()
     state_buffer = StateHistoryBuffer(max_length=10)
     
+    # Try to load existing weights
+    loaded = load_model(model, optimizer)
+    
     param_count = sum(p.numel() for p in model.parameters())
-    print(f"LSTM Agent initialized: {param_count:,} parameters")
+    status = "loaded from disk" if loaded else "initialized fresh"
+    print(f"LSTM Agent ({status}): {param_count:,} parameters")
     
     return model, optimizer, criterion, state_buffer

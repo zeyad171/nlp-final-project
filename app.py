@@ -24,7 +24,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 # Import our modules
-from lstm_agent import create_agent
+from lstm_agent import create_agent, save_model
 from rag.rag_system import get_rag_system
 from game_utils import ACTION_MAP, vectorize_state
 
@@ -300,6 +300,9 @@ def agent_batch_train():
         
         final_loss = total_loss / max(1, samples_trained)
         print(f"Batch training complete! Final avg loss: {final_loss:.4f}")
+        
+        # Save model after batch training
+        save_model(model, optimizer)
         
         return jsonify({
             "status": "success",
