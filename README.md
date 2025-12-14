@@ -229,13 +229,7 @@ Reset agent's state buffer (call on new game).
 
 ---
 
-## Documentation
 
-- **[Game Documentation](docs/game_documentation.md)** - Complete game content, rooms, items, puzzles
-- **[Training Guide](docs/TRAINING_GUIDE.md)** - How to train the LSTM agent
-- **[Technical Documentation](docs/TECHNICAL_DOCUMENTATION.md)** - Complete code documentation with architecture details
-
----
 
 ## Troubleshooting
 
